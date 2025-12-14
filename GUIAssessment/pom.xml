@@ -14,8 +14,9 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>1.8</maven.compiler.release>
+    <maven.compiler.testRelease>1.8</maven.compiler.testRelease>
     <maven.compiler.source>8</maven.compiler.source>
-    <maven.compiler.target>8</maven.compiler.target
+    <maven.compiler.target>8</maven.compiler.target>
   </properties>
 
   <dependencyManagement>
@@ -147,5 +148,6 @@
     </pluginManagement>
   </build>
 </project>
+
 
 
