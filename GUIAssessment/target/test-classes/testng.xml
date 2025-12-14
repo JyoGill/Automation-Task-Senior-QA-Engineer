@@ -1,8 +1,9 @@
-<!DOCRYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
-<suite name="Open|Parallel Suite" verbose="1" parallel="classes" thread-count="1">
-<test name="Cucumber Tests">
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
+<suite name="YourSuite">
+  <test name="UI">
     <classes>
-        <class name = "runner.DemoRunner"/>
+      <class name="runner.DemoRunner"/>
     </classes>
-</test>
+  </test>
 </suite>
