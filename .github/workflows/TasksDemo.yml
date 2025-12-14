@@ -60,6 +60,8 @@ jobs:
           if-no-files-found: warn
       - name: Prepare API site
         run: >
+          rm -rf api-site
+
           mkdir -p api-site
 
           if [ -d "RestAssured/target/cucumber-reports" ]; then cp -r
@@ -67,12 +69,19 @@ jobs:
 
           if [ -f "RestAssured/target/cucumber.json" ]; then cp
           RestAssured/target/cucumber.json api-site/; fi
+
+          # Create a placeholder index if nothing was copied, to ensure an
+          artifact is created
+
+          if [ -z "$(ls -A api-site 2>/dev/null)" ]; then echo
+          "<html><body><h3>No API report files found</h3></body></html>" >
+          api-site/index.html; fi
       - name: Upload API site artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pages-api
+          name: pages-api-site
           path: api-site
-          if-no-files-found: warn
+          if-no-files-found: error
   ui-tests:
     name: UI tests
     runs-on: ubuntu-latest
@@ -117,8 +126,7 @@ jobs:
               with open(p, "rb") as f: data = f.read()
               bom = b'\xef\xbb\xbf'
               if data.startswith(bom): data = data[len(bom):]
-              data = data.lstrip()
-              data = data.replace(b'\r\n', b'\n')
+              data = data.lstrip().replace(b'\r\n', b'\n')
               with open(p, "wb") as f: f.write(data)
               print("sanitized", p)
           PY
@@ -137,12 +145,14 @@ jobs:
         with:
           name: ui-test-reports
           path: |
-            GUIAssessment/test-output/**              # TestNG native HTML
-            GUIAssessment/target/cucumber-reports/**  # Cucumber HTML
+            GUIAssessment/test-output/**
+            GUIAssessment/target/cucumber-reports/**
             GUIAssessment/target/cucumber.json
           if-no-files-found: warn
       - name: Prepare UI site
         run: >
+          rm -rf ui-site
+
           mkdir -p ui-site
 
           if [ -d "GUIAssessment/test-output" ]; then cp -r
@@ -153,12 +163,18 @@ jobs:
 
           if [ -f "GUIAssessment/target/cucumber.json" ]; then cp
           GUIAssessment/target/cucumber.json ui-site/; fi
+
+          # Create a placeholder index if nothing was copied
+
+          if [ -z "$(ls -A ui-site 2>/dev/null)" ]; then echo
+          "<html><body><h3>No UI report files found</h3></body></html>" >
+          ui-site/index.html; fi
       - name: Upload UI site artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pages-ui
+          name: pages-ui-site
           path: ui-site
-          if-no-files-found: warn
+          if-no-files-found: error
   publish-pages:
     name: Combine & Publish Pages
     if: >-
@@ -169,16 +185,45 @@ jobs:
       - ui-tests
     runs-on: ubuntu-latest
     steps:
-      - name: Download API site
+      - name: Download site artifacts
         uses: actions/download-artifact@v4
         with:
-          name: pages-api
-          path: public/api
-      - name: Download UI site
-        uses: actions/download-artifact@v4
-        with:
-          name: pages-ui
-          path: public/ui
+          path: combined
+          pattern: pages-*-site
+          merge-multiple: true
+      - name: Build public tree
+        run: >
+          rm -rf public
+
+          mkdir -p public/api public/ui
+
+          # The merged download places artifact folders under combined/
+
+          if [ -d "combined/pages-api-site" ]; then cp -r
+          combined/pages-api-site/* public/api/ || true; fi
+
+          if [ -d "combined/pages-ui-site" ]; then cp -r
+          combined/pages-ui-site/* public/ui/ || true; fi
+
+          # Create root index page with links
+
+          cat > public/index.html <<'HTML'
+
+          <html>
+
+          <head><title>Automation Reports</title></head>
+
+          <body>
+            <h2>Automation Reports</h2>
+            <ul>
+              <li>./api/index.htmlAPI reports</a></li>
+              <li><a href="./ui/index.htmls</a></li>
+            </ul>
+          </body>
+
+          </html>
+
+          HTML
       - name: Upload combined Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
