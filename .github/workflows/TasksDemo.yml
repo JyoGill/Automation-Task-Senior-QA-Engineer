@@ -49,12 +49,14 @@ jobs:
           java-version: "17"
           cache: maven
 
+      # 👉 Update working-directory if your API module path differs
       - name: Build & run API tests via runner class (Maven)
         working-directory: RestAssured
         run: |
           mvn -B -q clean test \
             -Dtest=${{ github.event.inputs.api_runner }} \
-            -Dsurefire.disableXmlReport=true
+            -DdisableXmlReport=true \
+            -Dsurefire.useFile=false
 
       - name: Archive API reports
         uses: actions/upload-artifact@v4
@@ -107,7 +109,8 @@ jobs:
           sudo apt-get install -y google-chrome-stable
           google-chrome --version
 
-      - name: Sanitize POM and TestNG XML (remove BOM/CRLF/leading whitespace)
+      # Optional: sanitize headers in POM/testng.xml (removes BOM/CRLF/leading whitespace)
+      - name: Sanitize POM and TestNG XML
         working-directory: GUIAssessment
         run: |
           python - <<'PY'
@@ -125,6 +128,7 @@ jobs:
               clean(p)
           PY
 
+      # 👉 Update working-directory if your UI module path differs
       - name: Run UI tests (Maven) via TestNG suite or runner
         working-directory: GUIAssessment
         env:
@@ -134,11 +138,13 @@ jobs:
           if [ -f "src/test/resources/testng.xml" ]; then
             mvn -B -q clean test \
               -Dsurefire.suiteXmlFiles=src/test/resources/testng.xml \
-              -Dsurefire.disableXmlReport=true
+              -DdisableXmlReport=true \
+              -Dsurefire.useFile=false
           else
             mvn -B -q clean test \
               -Dtest=${{ github.event.inputs.ui_runner }} \
-              -Dsurefire.disableXmlReport=true
+              -DdisableXmlReport=true \
+              -Dsurefire.useFile=false
           fi
 
       - name: Archive UI reports
@@ -146,8 +152,8 @@ jobs:
         with:
           name: ui-test-reports
           path: |
-            GUIAssessment/test-output/**
-            GUIAssessment/target/cucumber-reports/**
+            GUIAssessment/test-output/**              # TestNG native HTML
+            GUIAssessment/target/cucumber-reports/**  # Cucumber HTML
             GUIAssessment/target/cucumber.json
           if-no-files-found: warn
 
