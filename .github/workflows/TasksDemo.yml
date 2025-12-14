@@ -50,7 +50,7 @@ jobs:
             -Dtest=${{ github.event.inputs.api_runner }} \
             -DdisableXmlReport=true \
             -Dsurefire.useFile=false
-      - name: Archive API reports
+      - name: Archive API test outputs
         uses: actions/upload-artifact@v4
         with:
           name: api-test-reports
@@ -58,19 +58,21 @@ jobs:
             RestAssured/target/cucumber-reports/**
             RestAssured/target/cucumber.json
           if-no-files-found: warn
-      - name: Prepare API Pages content
+      - name: Prepare API site
         run: >
-          mkdir -p public/api
+          mkdir -p api-site
 
           if [ -d "RestAssured/target/cucumber-reports" ]; then cp -r
-          RestAssured/target/cucumber-reports/* public/api/; fi
+          RestAssured/target/cucumber-reports/* api-site/; fi
 
           if [ -f "RestAssured/target/cucumber.json" ]; then cp
-          RestAssured/target/cucumber.json public/api/; fi
-      - name: Upload API Pages artifact
-        uses: actions/upload-pages-artifact@v3
+          RestAssured/target/cucumber.json api-site/; fi
+      - name: Upload API site artifact
+        uses: actions/upload-artifact@v4
         with:
-          path: public/api
+          name: pages-api
+          path: api-site
+          if-no-files-found: warn
   ui-tests:
     name: UI tests
     runs-on: ubuntu-latest
@@ -105,7 +107,7 @@ jobs:
           sudo apt-get install -y google-chrome-stable
 
           google-chrome --version
-      - name: Sanitize POM (remove BOM/CRLF/leading whitespace)
+      - name: Sanitize POM
         working-directory: GUIAssessment
         run: |
           python - <<'PY'
@@ -130,7 +132,7 @@ jobs:
             -Dtest=${{ github.event.inputs.ui_runner }} \
             -DdisableXmlReport=true \
             -Dsurefire.useFile=false
-      - name: Archive UI reports
+      - name: Archive UI test outputs
         uses: actions/upload-artifact@v4
         with:
           name: ui-test-reports
@@ -139,30 +141,52 @@ jobs:
             GUIAssessment/target/cucumber-reports/**  # Cucumber HTML
             GUIAssessment/target/cucumber.json
           if-no-files-found: warn
-      - name: Prepare UI Pages content
+      - name: Prepare UI site
         run: >
-          mkdir -p public/ui
+          mkdir -p ui-site
 
           if [ -d "GUIAssessment/test-output" ]; then cp -r
-          GUIAssessment/test-output/* public/ui/; fi
+          GUIAssessment/test-output/* ui-site/; fi
 
           if [ -d "GUIAssessment/target/cucumber-reports" ]; then cp -r
-          GUIAssessment/target/cucumber-reports/* public/ui/; fi
+          GUIAssessment/target/cucumber-reports/* ui-site/; fi
 
           if [ -f "GUIAssessment/target/cucumber.json" ]; then cp
-          GUIAssessment/target/cucumber.json public/ui/; fi
-      - name: Upload UI Pages artifact
-        uses: actions/upload-pages-artifact@v3
+          GUIAssessment/target/cucumber.json ui-site/; fi
+      - name: Upload UI site artifact
+        uses: actions/upload-artifact@v4
         with:
-          path: public/ui
-  deploy-report:
-    name: Deploy Pages
+          name: pages-ui
+          path: ui-site
+          if-no-files-found: warn
+  publish-pages:
+    name: Combine & Publish Pages
     if: >-
       ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       }}
     needs:
       - api-tests
       - ui-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download API site
+        uses: actions/download-artifact@v4
+        with:
+          name: pages-api
+          path: public/api
+      - name: Download UI site
+        uses: actions/download-artifact@v4
+        with:
+          name: pages-ui
+          path: public/ui
+      - name: Upload combined Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+  deploy-report:
+    name: Deploy GitHub Pages
+    needs:
+      - publish-pages
     runs-on: ubuntu-latest
     environment:
       name: github-pages
