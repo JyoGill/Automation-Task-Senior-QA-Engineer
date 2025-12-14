@@ -1,55 +1,48 @@
-
 name: UI & API (Cucumber + TestNG) - Split Jobs
-
-on:
+'on':
   push:
-    branches: ["main", "master"]
+    branches:
+      - main
+      - master
   pull_request:
-    branches: ["main", "master"]
+    branches:
+      - main
+      - master
   workflow_dispatch:
     inputs:
       ui_runner:
-        description: "UI TestNG Cucumber runner class (e.g. runner.DemoRunner)"
+        description: UI TestNG Cucumber runner class (e.g. runner.DemoRunner)
         required: false
-        default: "runner.DemoRunner"
+        default: runner.DemoRunner
       api_runner:
-        description: "API test runner class (e.g. StepDefinition.APITestRunner)"
+        description: API test runner class (e.g. StepDefinition.APITestRunner)
         required: false
-        default: "StepDefinition.APITestRunner"
-
+        default: StepDefinition.APITestRunner
 concurrency:
-  group: tasksdemo-${{ github.ref }}
+  group: 'tasksdemo-${{ github.ref }}'
   cancel-in-progress: true
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 jobs:
-
   api-tests:
     name: API tests
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Show repo layout (diagnostic)
         run: |
           ls -la
           echo "---- pom.xml candidates ----"
           find . -maxdepth 3 -name "pom.xml" -print || true
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
           cache: maven
-
-      # 👉 Update working-directory if your API module path differs
       - name: Build & run API tests via runner class (Maven)
         working-directory: RestAssured
         run: |
@@ -57,7 +50,6 @@ jobs:
             -Dtest=${{ github.event.inputs.api_runner }} \
             -DdisableXmlReport=true \
             -Dsurefire.useFile=false
-
       - name: Archive API reports
         uses: actions/upload-artifact@v4
         with:
@@ -66,87 +58,78 @@ jobs:
             RestAssured/target/cucumber-reports/**
             RestAssured/target/cucumber.json
           if-no-files-found: warn
-
       - name: Prepare API Pages content
-        run: |
+        run: >
           mkdir -p public/api
-          if [ -d "RestAssured/target/cucumber-reports" ]; then cp -r RestAssured/target/cucumber-reports/* public/api/; fi
-          if [ -f "RestAssured/target/cucumber.json" ]; then cp RestAssured/target/cucumber.json public/api/; fi
 
+          if [ -d "RestAssured/target/cucumber-reports" ]; then cp -r
+          RestAssured/target/cucumber-reports/* public/api/; fi
+
+          if [ -f "RestAssured/target/cucumber.json" ]; then cp
+          RestAssured/target/cucumber.json public/api/; fi
       - name: Upload API Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: public/api
-
   ui-tests:
     name: UI tests
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Show repo layout (diagnostic)
         run: |
           ls -la
           echo "---- pom.xml candidates ----"
           find . -maxdepth 3 -name "pom.xml" -print || true
-
       - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "11"
+          java-version: '11'
           cache: maven
-
       - name: Install Chrome (headless)
-        run: |
+        run: >
           sudo apt-get update
-          sudo apt-get install -y xvfb wget gnupg
-          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-          sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
-          google-chrome --version
 
-      # Optional: sanitize headers in POM/testng.xml (removes BOM/CRLF/leading whitespace)
-      - name: Sanitize POM and TestNG XML
+          sudo apt-get install -y xvfb wget gnupg
+
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo
+          apt-key add -
+
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable
+          main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+
+          sudo apt-get update
+
+          sudo apt-get install -y google-chrome-stable
+
+          google-chrome --version
+      - name: Sanitize POM (remove BOM/CRLF/leading whitespace)
         working-directory: GUIAssessment
         run: |
           python - <<'PY'
           import os
-          def clean(path):
-              if not os.path.exists(path): return
-              with open(path, 'rb') as f: data = f.read()
+          p = "pom.xml"
+          if os.path.exists(p):
+              with open(p, "rb") as f: data = f.read()
               bom = b'\xef\xbb\xbf'
               if data.startswith(bom): data = data[len(bom):]
               data = data.lstrip()
               data = data.replace(b'\r\n', b'\n')
-              with open(path, 'wb') as f: f.write(data)
-              print('sanitized', path)
-          for p in ['pom.xml', 'src/test/resources/testng.xml']:
-              clean(p)
+              with open(p, "wb") as f: f.write(data)
+              print("sanitized", p)
           PY
-
-      # 👉 Update working-directory if your UI module path differs
-      - name: Run UI tests (Maven) via TestNG suite or runner
+      - name: Run UI tests (Maven) via runner class
         working-directory: GUIAssessment
         env:
           CHROME_BIN: /usr/bin/google-chrome
-          HEADLESS: "true"
+          HEADLESS: 'true'
         run: |
-          if [ -f "src/test/resources/testng.xml" ]; then
-            mvn -B -q clean test \
-              -Dsurefire.suiteXmlFiles=src/test/resources/testng.xml \
-              -DdisableXmlReport=true \
-              -Dsurefire.useFile=false
-          else
-            mvn -B -q clean test \
-              -Dtest=${{ github.event.inputs.ui_runner }} \
-              -DdisableXmlReport=true \
-              -Dsurefire.useFile=false
-          fi
-
+          mvn -B -q clean test \
+            -Dtest=${{ github.event.inputs.ui_runner }} \
+            -DdisableXmlReport=true \
+            -Dsurefire.useFile=false
       - name: Archive UI reports
         uses: actions/upload-artifact@v4
         with:
@@ -156,23 +139,30 @@ jobs:
             GUIAssessment/target/cucumber-reports/**  # Cucumber HTML
             GUIAssessment/target/cucumber.json
           if-no-files-found: warn
-
       - name: Prepare UI Pages content
-        run: |
+        run: >
           mkdir -p public/ui
-          if [ -d "GUIAssessment/test-output" ]; then cp -r GUIAssessment/test-output/* public/ui/; fi
-          if [ -d "GUIAssessment/target/cucumber-reports" ]; then cp -r GUIAssessment/target/cucumber-reports/* public/ui/; fi
-          if [ -f "GUIAssessment/target/cucumber.json" ]; then cp GUIAssessment/target/cucumber.json public/ui/; fi
 
+          if [ -d "GUIAssessment/test-output" ]; then cp -r
+          GUIAssessment/test-output/* public/ui/; fi
+
+          if [ -d "GUIAssessment/target/cucumber-reports" ]; then cp -r
+          GUIAssessment/target/cucumber-reports/* public/ui/; fi
+
+          if [ -f "GUIAssessment/target/cucumber.json" ]; then cp
+          GUIAssessment/target/cucumber.json public/ui/; fi
       - name: Upload UI Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: public/ui
-
   deploy-report:
     name: Deploy Pages
-    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
-    needs: [api-tests, ui-tests]
+    if: >-
+      ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      }}
+    needs:
+      - api-tests
+      - ui-tests
     runs-on: ubuntu-latest
     environment:
       name: github-pages
