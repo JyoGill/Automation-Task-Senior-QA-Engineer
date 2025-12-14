@@ -1,0 +1,13 @@
+
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
+<suite name="REST Assured Demo Suite" verbose="1" parallel="false">
+    <test name="API Tests">
+        <classes>
+            <!-- Plain TestNG + RestAssured -->
+            <class name="test.java.APITestDemo"/>
+
+            <!-- Cucumber + TestNG runner -->
+            <class name="test.java.StepDefinition.APITestRunner"/>
+        </classes>
+    </test>
+</suite>
