@@ -70,7 +70,8 @@ jobs:
           if [ -f "RestAssured/target/cucumber.json" ]; then cp
           RestAssured/target/cucumber.json api-site/; fi
 
-          # Ensure artifact always exists
+          # Create a placeholder index if nothing was copied, to ensure an
+          artifact is created
 
           if [ -z "$(ls -A api-site 2>/dev/null)" ]; then echo
           "<html><body><h3>No API report files found</h3></body></html>" >
@@ -115,19 +116,20 @@ jobs:
           sudo apt-get install -y google-chrome-stable
 
           google-chrome --version
-      - name: Sanitize POM (remove BOM / CRLF / leading whitespace)
+      - name: Sanitize POM
         working-directory: GUIAssessment
-        shell: bash
         run: |
-          set -e
-          if [ -f "pom.xml" ]; then
-            # Remove UTF-8 BOM, convert CRLF->LF, strip leading whitespace before XML prolog
-            perl -0777 -pe 's/^\xEF\xBB\xBF//; s/\r\n/\n/g; s/^\s+//s' pom.xml > pom.cleaned
-            mv pom.cleaned pom.xml
-            echo "sanitized pom.xml"
-          else
-            echo "pom.xml not found; skipping"
-          fi
+          python - <<'PY'
+          import os
+          p = "pom.xml"
+          if os.path.exists(p):
+              with open(p, "rb") as f: data = f.read()
+              bom = b'\xef\xbb\xbf'
+              if data.startswith(bom): data = data[len(bom):]
+              data = data.lstrip().replace(b'\r\n', b'\n')
+              with open(p, "wb") as f: f.write(data)
+              print("sanitized", p)
+          PY
       - name: Run UI tests (Maven) via runner class
         working-directory: GUIAssessment
         env:
@@ -143,8 +145,8 @@ jobs:
         with:
           name: ui-test-reports
           path: |
-            GUIAssessment/test-output/**              # TestNG native HTML
-            GUIAssessment/target/cucumber-reports/**  # Cucumber HTML
+            GUIAssessment/test-output/**
+            GUIAssessment/target/cucumber-reports/**
             GUIAssessment/target/cucumber.json
           if-no-files-found: warn
       - name: Prepare UI site
@@ -162,7 +164,7 @@ jobs:
           if [ -f "GUIAssessment/target/cucumber.json" ]; then cp
           GUIAssessment/target/cucumber.json ui-site/; fi
 
-          # Ensure artifact always exists
+          # Create a placeholder index if nothing was copied
 
           if [ -z "$(ls -A ui-site 2>/dev/null)" ]; then echo
           "<html><body><h3>No UI report files found</h3></body></html>" >
@@ -183,8 +185,6 @@ jobs:
       - ui-tests
     runs-on: ubuntu-latest
     steps:
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
       - name: Download site artifacts
         uses: actions/download-artifact@v4
         with:
@@ -197,25 +197,30 @@ jobs:
 
           mkdir -p public/api public/ui
 
+          # The merged download places artifact folders under combined/
+
           if [ -d "combined/pages-api-site" ]; then cp -r
           combined/pages-api-site/* public/api/ || true; fi
 
           if [ -d "combined/pages-ui-site" ]; then cp -r
           combined/pages-ui-site/* public/ui/ || true; fi
 
-          # Root index with links (simple landing page)
+          # Create root index page with links
 
           cat > public/index.html <<'HTML'
 
           <html>
-            <head><title>Automation Reports</title></head>
-            <body>
-              <h2>Automation Reports</h2>
-              <ul>
-                <li>./api/API reports</a></li>
-                <li>./ui/UI reports</a></li>
-              </ul>
-            </body>
+
+          <head><title>Automation Reports</title></head>
+
+          <body>
+            <h2>Automation Reports</h2>
+            <ul>
+              <li>./api/index.htmlAPI reports</a></li>
+              <li><a href="./ui/index.htmls</a></li>
+            </ul>
+          </body>
+
           </html>
 
           HTML
@@ -230,8 +235,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: '${{ steps.deployment.outputs.page_url }}'
     steps:
       - name: Deploy to GitHub Pages
-        id: deployment
+        id: deploy
         uses: actions/deploy-pages@v4
