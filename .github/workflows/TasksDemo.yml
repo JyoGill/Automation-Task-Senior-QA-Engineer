@@ -1,5 +1,5 @@
 
-name: UI & API (Cucumber + TestNG) – Split Jobs (subfolder aware)
+name: UI & API (Cucumber + TestNG) – Split Jobs
 
 on:
   push:
@@ -30,7 +30,6 @@ jobs:
   # =================== API JOB ===================
   api-tests:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,9 +50,7 @@ jobs:
       - name: Build & run API tests via runner class (Maven)
         working-directory: RestAssured
         run: |
-          # Run the API test runner class
           mvn -B -q clean test -Dtest="${{ github.event.inputs.api_runner }}"
-          # Generate HTML surefire report
           mvn -B -q surefire-report:report
 
       - name: Archive API reports
@@ -82,7 +79,6 @@ jobs:
   # =================== UI JOB ===================
   ui-tests:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -93,6 +89,7 @@ jobs:
           echo "---- pom.xml candidates ----"
           find . -maxdepth 3 -name "pom.xml" -print || true
 
+      # UI is targeting Java 8 per your POM
       - name: Set up JDK 8
         uses: actions/setup-java@v4
         with:
@@ -110,14 +107,14 @@ jobs:
           sudo apt-get install -y google-chrome-stable
           google-chrome --version
 
-      - name: Run UI tests (Maven) via TestNG runner or suite
+      - name: Run UI tests (Maven) via TestNG suite or runner
         working-directory: GUIAssessment
         env:
           CHROME_BIN: /usr/bin/google-chrome
           HEADLESS: "true"
         run: |
-          if [ -f "testng.xml" ]; then
-            mvn -B -q clean test -Dsurefire.suiteXmlFiles=testng.xml
+          if [ -f "src/test/resources/testng.xml" ]; then
+            mvn -B -q clean test -Dsurefire.suiteXmlFiles=src/test/resources/testng.xml
           else
             mvn -B -q clean test -Dtest="${{ github.event.inputs.ui_runner }}"
           fi
