@@ -1,11 +1,13 @@
-
 name: UI & API (Cucumber + TestNG) - Split Jobs
-
-on:
+'on':
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
   pull_request:
-    branches: [main, master]
+    branches:
+      - main
+      - master
   workflow_dispatch:
     inputs:
       ui_runner:
@@ -16,48 +18,38 @@ on:
         description: API test runner class (e.g. StepDefinition.APITestRunner)
         required: false
         default: StepDefinition.APITestRunner
-
 concurrency:
-  group: tasksdemo-${{ github.ref }}
+  group: 'tasksdemo-${{ github.ref }}'
   cancel-in-progress: true
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 jobs:
   api-tests:
     name: API tests
     runs-on: ubuntu-latest
-    env:
-      # Default runner when not using workflow_dispatch
-      API_RUNNER: ${{ github.event.inputs.api_runner || 'StepDefinition.APITestRunner' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Show repo layout (diagnostic)
         run: |
           ls -la
           echo "---- pom.xml candidates ----"
           find . -maxdepth 3 -name "pom.xml" -print || true
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
           cache: maven
-
       - name: Build & run API tests via runner class (Maven)
         working-directory: RestAssured
         run: |
           mvn -B -q clean test \
-            -Dtest=${{ env.API_RUNNER }} \
+            -Dtest=${{ github.event.inputs.api_runner }} \
             -DdisableXmlReport=true \
             -Dsurefire.useFile=false
-
       - name: Archive API test outputs
         uses: actions/upload-artifact@v4
         with:
@@ -66,58 +58,64 @@ jobs:
             RestAssured/target/cucumber-reports/**
             RestAssured/target/cucumber.json
           if-no-files-found: warn
-
       - name: Prepare API site
-        run: |
+        run: >
           rm -rf api-site
-          mkdir -p api-site
-          if [ -d "RestAssured/target/cucumber-reports" ]; then cp -r RestAssured/target/cucumber-reports/* api-site/; fi
-          if [ -f "RestAssured/target/cucumber.json" ]; then cp RestAssured/target/cucumber.json api-site/; fi
-          # Ensure a minimal index exists
-          if [ -z "$(ls -A api-site 2>/dev/null)" ]; then echo "<html><body><h3>No API report files found</h3></body></html>" > api-site/index.html; fi
 
+          mkdir -p api-site
+
+          if [ -d "RestAssured/target/cucumber-reports" ]; then cp -r
+          RestAssured/target/cucumber-reports/* api-site/; fi
+
+          if [ -f "RestAssured/target/cucumber.json" ]; then cp
+          RestAssured/target/cucumber.json api-site/; fi
+
+          # Create a placeholder index if nothing was copied, to ensure an
+          artifact is created
+
+          if [ -z "$(ls -A api-site 2>/dev/null)" ]; then echo
+          "<html><body><h3>No API report files found</h3></body></html>" >
+          api-site/index.html; fi
       - name: Upload API site artifact
         uses: actions/upload-artifact@v4
         with:
           name: pages-api-site
           path: api-site
           if-no-files-found: error
-
   ui-tests:
     name: UI tests
     runs-on: ubuntu-latest
-    env:
-      # Default runner when not using workflow_dispatch
-      UI_RUNNER: ${{ github.event.inputs.ui_runner || 'runner.DemoRunner' }}
-      CHROME_BIN: /usr/bin/google-chrome
-      HEADLESS: 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Show repo layout (diagnostic)
         run: |
           ls -la
           echo "---- pom.xml candidates ----"
           find . -maxdepth 3 -name "pom.xml" -print || true
-
       - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '11'
           cache: maven
-
       - name: Install Chrome (headless)
-        run: |
+        run: >
           sudo apt-get update
-          sudo apt-get install -y xvfb wget gnupg
-          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-          sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
-          google-chrome --version
 
+          sudo apt-get install -y xvfb wget gnupg
+
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo
+          apt-key add -
+
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable
+          main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+
+          sudo apt-get update
+
+          sudo apt-get install -y google-chrome-stable
+
+          google-chrome --version
       - name: Sanitize POM
         working-directory: GUIAssessment
         run: |
@@ -132,15 +130,16 @@ jobs:
               with open(p, "wb") as f: f.write(data)
               print("sanitized", p)
           PY
-
       - name: Run UI tests (Maven) via runner class
         working-directory: GUIAssessment
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+          HEADLESS: 'true'
         run: |
           mvn -B -q clean test \
-            -Dtest=${{ env.UI_RUNNER }} \
+            -Dtest=${{ github.event.inputs.ui_runner }} \
             -DdisableXmlReport=true \
             -Dsurefire.useFile=false
-
       - name: Archive UI test outputs
         uses: actions/upload-artifact@v4
         with:
@@ -150,75 +149,87 @@ jobs:
             GUIAssessment/target/cucumber-reports/**
             GUIAssessment/target/cucumber.json
           if-no-files-found: warn
-
       - name: Prepare UI site
-        run: |
+        run: >
           rm -rf ui-site
-          mkdir -p ui-site
-          if [ -d "GUIAssessment/test-output" ]; then cp -r GUIAssessment/test-output/* ui-site/; fi
-          if [ -d "GUIAssessment/target/cucumber-reports" ]; then cp -r GUIAssessment/target/cucumber-reports/* ui-site/; fi
-          if [ -f "GUIAssessment/target/cucumber.json" ]; then cp GUIAssessment/target/cucumber.json ui-site/; fi
-          # Ensure a minimal index exists
-          if [ -z "$(ls -A ui-site 2>/dev/null)" ]; then echo "<html><body><h3>No UI report files found</h3></body></html>" > ui-site/index.html; fi
 
+          mkdir -p ui-site
+
+          if [ -d "GUIAssessment/test-output" ]; then cp -r
+          GUIAssessment/test-output/* ui-site/; fi
+
+          if [ -d "GUIAssessment/target/cucumber-reports" ]; then cp -r
+          GUIAssessment/target/cucumber-reports/* ui-site/; fi
+
+          if [ -f "GUIAssessment/target/cucumber.json" ]; then cp
+          GUIAssessment/target/cucumber.json ui-site/; fi
+
+          # Create a placeholder index if nothing was copied
+
+          if [ -z "$(ls -A ui-site 2>/dev/null)" ]; then echo
+          "<html><body><h3>No UI report files found</h3></body></html>" >
+          ui-site/index.html; fi
       - name: Upload UI site artifact
         uses: actions/upload-artifact@v4
         with:
           name: pages-ui-site
           path: ui-site
           if-no-files-found: error
-
   publish-pages:
     name: Combine & Publish Pages
-    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+    if: >-
+      ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      }}
     needs:
       - api-tests
       - ui-tests
     runs-on: ubuntu-latest
     steps:
-      - name: Download API site artifact
+      - name: Download site artifacts
         uses: actions/download-artifact@v4
         with:
-          name: pages-api-site
-          path: combined/api
-
-      - name: Download UI site artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: pages-ui-site
-          path: combined/ui
-
+          path: combined
+          pattern: pages-*-site
+          merge-multiple: true
       - name: Build public tree
-        run: |
-          set -e
+        run: >
           rm -rf public
+
           mkdir -p public/api public/ui
-          if [ -d "combined/api" ]; then cp -r combined/api/* public/api/ || true; fi
-          if [ -d "combined/ui" ]; then cp -r combined/ui/* public/ui/ || true; fi
+
+          # The merged download places artifact folders under combined/
+
+          if [ -d "combined/pages-api-site" ]; then cp -r
+          combined/pages-api-site/* public/api/ || true; fi
+
+          if [ -d "combined/pages-ui-site" ]; then cp -r
+          combined/pages-ui-site/* public/ui/ || true; fi
+
+          # Create root index page with links
+
           cat > public/index.html <<'HTML'
+
           <html>
-          <head><meta charset="utf-8"><title>Automation Reports</title></head>
+
+          <head><title>Automation Reports</title></head>
+
           <body>
             <h2>Automation Reports</h2>
             <ul>
               <li>./api/index.htmlAPI reports</a></li>
-              <li>./ui/index.htmlUI reports</a></li>
+              <li><a href="./ui/index.htmls</a></li>
             </ul>
           </body>
+
           </html>
+
           HTML
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
       - name: Upload combined Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: public
-
   deploy-report:
     name: Deploy GitHub Pages
-    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
     needs:
       - publish-pages
     runs-on: ubuntu-latest
