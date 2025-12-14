@@ -11,7 +11,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <!-- Compile to Java 11 -->
+    <!-- Compile to Java 11 (required by TestNG 7.6+ and Selenium 4.x) -->
     <maven.compiler.release>11</maven.compiler.release>
   </properties>
 
@@ -41,7 +41,7 @@
       <version>4.8.3</version>
     </dependency>
 
-    <!-- WebDriverManager (optional) -->
+    <!-- WebDriverManager (optional; Selenium Manager can resolve drivers too) -->
     <dependency>
       <groupId>io.github.bonigarcia</groupId>
       <artifactId>webdrivermanager</artifactId>
@@ -62,20 +62,18 @@
         </configuration>
       </plugin>
 
-      <!-- Surefire: run tests, but DO NOT generate/parse XML reports -->
+      <!-- Surefire: run tests via runner class; DO NOT generate/parse XML reports -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
         <configuration>
-          <!-- Prevent malformed XML from breaking the build -->
+          <!-- Avoid XML generation/parsing which caused SAX errors -->
           <disableXmlReport>true</disableXmlReport>
-          <!-- Keep classpath behavior relaxed for TestNG -->
+          <!-- Keep relaxed classloader for TestNG -->
           <useSystemClassLoader>false</useSystemClassLoader>
-          <!-- Run TestNG suite file -->
-          <suiteXmlFiles>
-            <suiteXmlFile>src/test/resources/testng.xml</suiteXmlFile>
-          </suiteXmlFiles>
+          <!-- No suiteXmlFiles here (we removed testng.xml) -->
+          <!-- The runner class will be passed via -Dtest=runner.DemoRunner from CI -->
         </configuration>
       </plugin>
     </plugins>
