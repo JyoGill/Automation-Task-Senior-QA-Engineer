@@ -46,23 +46,18 @@ jobs:
         working-directory: RestAssured
         run: |
           mvn -B -q clean test -Dtest="${{ github.event.inputs.api_runner }}"
-          mvn -B -q surefire-report:report
       - name: Archive API reports
         uses: actions/upload-artifact@v4
         with:
           name: api-test-reports
           path: |
             RestAssured/target/surefire-reports/**
-            RestAssured/target/site/**
             RestAssured/target/cucumber-reports/**
             RestAssured/target/cucumber.json
           if-no-files-found: warn
       - name: Prepare API Pages content
         run: >
           mkdir -p public/api
-
-          if [ -d "RestAssured/target/site" ]; then cp -r
-          RestAssured/target/site/* public/api/; fi
 
           if [ -d "RestAssured/target/cucumber-reports" ]; then cp -r
           RestAssured/target/cucumber-reports/* public/api/; fi
@@ -116,20 +111,13 @@ jobs:
               with open(path, 'rb') as f: data = f.read()
               bom = b'\xef\xbb\xbf'
               if data.startswith(bom): data = data[len(bom):]
-              data = data.lstrip()        # remove leading whitespace
-              data = data.replace(b'\r\n', b'\n')  # CRLF -> LF
+              data = data.lstrip()               # leading whitespace
+              data = data.replace(b'\r\n', b'\n') # CRLF -> LF
               with open(path, 'wb') as f: f.write(data)
               print('sanitized', path)
           for p in ['pom.xml', 'src/test/resources/testng.xml']:
               clean(p)
           PY
-      - name: Inspect POM/TestNG headers (diagnostic)
-        working-directory: GUIAssessment
-        run: |
-          echo "pom.xml head:"
-          head -n 3 pom.xml | cat -v
-          echo "testng.xml head:"
-          head -n 3 src/test/resources/testng.xml | cat -v
       - name: Run UI tests (Maven) via TestNG suite or runner
         working-directory: GUIAssessment
         env:
@@ -141,14 +129,13 @@ jobs:
           else
             mvn -B -q clean test -Dtest="${{ github.event.inputs.ui_runner }}"
           fi
-          mvn -B -q surefire-report:report
       - name: Archive UI reports
         uses: actions/upload-artifact@v4
         with:
           name: ui-test-reports
           path: |
             GUIAssessment/target/surefire-reports/**
-            GUIAssessment/target/site/**
+            GUIAssessment/test-output/**            # TestNG native HTML reports
             GUIAssessment/target/cucumber-reports/**
             GUIAssessment/target/cucumber.json
           if-no-files-found: warn
@@ -156,8 +143,8 @@ jobs:
         run: >
           mkdir -p public/ui
 
-          if [ -d "GUIAssessment/target/site" ]; then cp -r
-          GUIAssessment/target/site/* public/ui/; fi
+          if [ -d "GUIAssessment/test-output" ]; then cp -r
+          GUIAssessment/test-output/* public/ui/; fi
 
           if [ -d "GUIAssessment/target/cucumber-reports" ]; then cp -r
           GUIAssessment/target/cucumber-reports/* public/ui/; fi
