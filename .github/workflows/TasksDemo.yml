@@ -1,120 +1,134 @@
-name: UI & API (Cucumber + TestNG) – Split Jobs
-'on':
+
+name: UI & API (Cucumber + TestNG) – Split Jobs (subfolder aware)
+
+on:
   push:
-    branches:
-      - main
-      - master
+    branches: ["main", "master"]
   pull_request:
-    branches:
-      - main
-      - master
+    branches: ["main", "master"]
   workflow_dispatch:
     inputs:
-      api_tags:
-        description: Cucumber tag expression for API job (e.g. @api and not @wip)
-        required: false
-        default: '@api'
       ui_runner:
-        description: >-
-          Fully-qualified TestNG Cucumber runner class for UI (e.g.
-          runner.DemoRunner)
+        description: "Fully-qualified TestNG Cucumber runner class for UI (e.g. runner.DemoRunner)"
         required: false
-        default: runner.DemoRunner
+        default: "runner.DemoRunner"
+      api_runner:
+        description: "Fully-qualified Test runner class for API (e.g. StepDefinition.APITestRunner)"
+        required: false
+        default: "StepDefinition.APITestRunner"
+
 concurrency:
-  group: 'cuc-testng-${{ github.ref }}'
+  group: cuc-testng-${{ github.ref }}
   cancel-in-progress: true
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 jobs:
+  # -------------------- API tests (runner class) --------------------
   api-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show project layout (top level)
+        run: |
+          ls -la
+          find . -maxdepth 3 -name "pom.xml" -print
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
           cache: maven
-      - name: Run API scenarios with Cucumber tags (Maven)
-        if: '${{ hashFiles(''**/pom.xml'') != '''' }}'
-        run: >
-          TAG_OPT="-Dcucumber.filter.tags=${{ github.event.inputs.api_tags ||
-          '@api' }}"
 
-          mvn -B -q clean test $TAG_OPT
+      # Run from API module folder
+      - name: Build & run API via runner class (Maven)
+        if: ${{ hashFiles('RestAssured/**/pom.xml') != '' }}
+        working-directory: RestAssured
+        run: |
+          # Execute the API TestNG/Cucumber runner class directly
+          mvn -B -q clean test -Dtest=${{ github.event.inputs.api_runner || 'StepDefinition.APITestRunner' }}
 
+          # Generate default surefire HTML report to target/site
           mvn -B -q surefire-report:report
-      - name: Run API scenarios with Cucumber tags (Gradle)
-        if: >-
-          ${{ hashFiles('**/pom.xml') == '' && hashFiles('**/build.gradle') !=
-          '' }}
-        run: >
-          chmod +x gradlew || true
 
-          ./gradlew clean test -Dcucumber.filter.tags="${{
-          github.event.inputs.api_tags || '@api' }}" --info
+      - name: Build & run API via runner class (Gradle fallback)
+        if: ${{ hashFiles('RestAssured/**/pom.xml') == '' && hashFiles('RestAssured/**/build.gradle') != '' }}
+        working-directory: RestAssured
+        run: |
+          chmod +x gradlew || true
+          ./gradlew clean test -Dtest=${{ github.event.inputs.api_runner || 'StepDefinition.APITestRunner' }} --info
+
       - name: Archive API reports
         uses: actions/upload-artifact@v4
         with:
           name: api-test-reports
           path: |
-            target/surefire-reports/**
-            target/site/**
-            target/cucumber-reports/**
-            target/cucumber.json
-            build/reports/tests/**
+            RestAssured/target/surefire-reports/**
+            RestAssured/target/site/**
+            RestAssured/target/cucumber-reports/**
+            RestAssured/target/cucumber.json
+            RestAssured/build/reports/tests/**
           if-no-files-found: warn
+
       - name: Prepare API Pages
-        run: >
+        run: |
           mkdir -p public/api
-
-          for d in target/site build/reports/tests target/cucumber-reports; do
-            if [ -d "$d" ]; then cp -r $d/* public/api/; fi
+          for d in \
+            "RestAssured/target/site" \
+            "RestAssured/build/reports/tests" \
+            "RestAssured/target/cucumber-reports"
+          do
+            if [ -d "$d" ]; then cp -r "$d"/* public/api/; fi
           done
+          if [ -f "RestAssured/target/cucumber.json" ]; then cp "RestAssured/target/cucumber.json" public/api/; fi
 
-          if [ -f target/cucumber.json ]; then cp target/cucumber.json
-          public/api/; fi
       - name: Upload API Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: public/api
+
+  # -------------------- UI tests (TestNG runner) --------------------
   ui-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show project layout (top level)
+        run: |
+          ls -la
+          find . -maxdepth 3 -name "pom.xml" -print
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
           cache: maven
+
       - name: Install Chrome (headless) & Xvfb
-        run: >
+        run: |
           sudo apt-get update
-
           sudo apt-get install -y xvfb wget gnupg
-
-          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo
-          apt-key add -
-
-          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable
-          main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
-
           sudo apt-get install -y google-chrome-stable
-
           google-chrome --version
+
+      # Run from UI module folder
       - name: Run UI tests via TestNG Cucumber runner (Maven)
-        if: '${{ hashFiles(''**/pom.xml'') != '''' }}'
+        if: ${{ hashFiles('GUIAssessment/**/pom.xml') != '' }}
+        working-directory: GUIAssessment
         env:
           CHROME_BIN: /usr/bin/google-chrome
-          HEADLESS: 'true'
+          HEADLESS: "true"
         run: |
           # Prefer suite XML if present; otherwise target the runner class.
           if [ -f "testng.xml" ]; then
@@ -123,10 +137,10 @@ jobs:
             mvn -B -q clean test -Dtest=${{ github.event.inputs.ui_runner || 'runner.DemoRunner' }}
           fi
           mvn -B -q surefire-report:report
+
       - name: Run UI tests via TestNG Cucumber runner (Gradle)
-        if: >-
-          ${{ hashFiles('**/pom.xml') == '' && hashFiles('**/build.gradle') !=
-          '' }}
+        if: ${{ hashFiles('GUIAssessment/**/pom.xml') == '' && hashFiles('GUIAssessment/**/build.gradle') != '' }}
+        working-directory: GUIAssessment
         run: |
           chmod +x gradlew || true
           if [ -f "testng.xml" ]; then
@@ -134,43 +148,44 @@ jobs:
           else
             ./gradlew clean test -Dtest=${{ github.event.inputs.ui_runner || 'runner.DemoRunner' }} --info
           fi
+
       - name: Archive UI reports
         uses: actions/upload-artifact@v4
         with:
           name: ui-test-reports
           path: |
-            target/surefire-reports/**
-            target/site/**
-            target/cucumber-reports/**
-            target/cucumber.json
-            build/reports/tests/**
+            GUIAssessment/target/surefire-reports/**
+            GUIAssessment/target/site/**
+            GUIAssessment/target/cucumber-reports/**
+            GUIAssessment/target/cucumber.json
+            GUIAssessment/build/reports/tests/**
           if-no-files-found: warn
+
       - name: Prepare UI Pages
-        run: >
+        run: |
           mkdir -p public/ui
-
-          for d in target/site build/reports/tests target/cucumber-reports; do
-            if [ -d "$d" ]; then cp -r $d/* public/ui/; fi
+          for d in \
+            "GUIAssessment/target/site" \
+            "GUIAssessment/build/reports/tests" \
+            "GUIAssessment/target/cucumber-reports"
+          do
+            if [ -d "$d" ]; then cp -r "$d"/* public/ui/; fi
           done
+          if [ -f "GUIAssessment/target/cucumber.json" ]; then cp "GUIAssessment/target/cucumber.json" public/ui/; fi
 
-          if [ -f target/cucumber.json ]; then cp target/cucumber.json
-          public/ui/; fi
       - name: Upload UI Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: public/ui
+
+  # -------------------- Deploy combined reports --------------------
   deploy-report:
-    if: >-
-      ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-      }}
-    needs:
-      - api-tests
-      - ui-tests
+    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+    needs: [api-tests, ui-tests]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: '${{ steps.deploy.outputs.page_url }}'
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deploy
-        uses: actions/deploy-pages@v4
